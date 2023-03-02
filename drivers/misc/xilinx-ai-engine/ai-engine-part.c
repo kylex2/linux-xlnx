@@ -637,6 +637,12 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	long ret;
 
 	switch (cmd) {
+	case AIE_PARTITION_INIT_IOCTL:
+		return aie_part_initialize(apart, argp);
+	case AIE_PARTITION_TEAR_IOCTL:
+		return aie_part_teardown(apart);
+	case AIE_PARTITION_CLR_CONTEXT_IOCTL:
+		return aie_part_clear_context(apart);
 	case AIE_REG_IOCTL:
 	{
 		struct aie_reg_args raccess;
@@ -835,15 +841,6 @@ static int aie_create_tiles(struct aie_partition *apart)
 	u32 row, col, numtiles;
 	int ret = 0;
 
-	/*
-	 * NOTE: sysfs is supported for AIE only. Remove the below check once
-	 * it is supported.
-	 */
-	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_dbg(&apart->dev, "Skipping sysfs partition\n");
-		return 0;
-	}
-
 	numtiles = apart->range.size.col * apart->range.size.row;
 	atile = devm_kzalloc(&apart->dev, numtiles * sizeof(struct aie_tile),
 			     GFP_KERNEL);
@@ -1025,16 +1022,12 @@ void aie_part_remove(struct aie_partition *apart)
 	struct aie_tile *atile = apart->atiles;
 	u32 index;
 
-	if (apart->adev->dev_gen == AIE_DEVICE_GEN_AIEML) {
-		dev_dbg(&apart->dev, "Skipping sysfs pattition\n");
-		goto delete;
-	}
 	for (index = 0; index < apart->range.size.col * apart->range.size.row;
 	     index++, atile++)
 		aie_tile_remove(atile);
 
 	aie_part_sysfs_remove_entries(apart);
-delete:
+
 	device_del(&apart->dev);
 	put_device(&apart->dev);
 }

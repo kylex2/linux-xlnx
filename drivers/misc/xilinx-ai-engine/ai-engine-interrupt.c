@@ -60,13 +60,20 @@ void aie_read_event_status(struct aie_partition *apart,
 {
 	const struct aie_event_attr *event_mod;
 	u8 offset;
+	u32 ttype;
 
-	if (module == AIE_CORE_MOD)
-		event_mod = apart->adev->core_events;
-	else if (module == AIE_MEM_MOD)
-		event_mod = apart->adev->mem_events;
-	else
+	ttype = apart->adev->ops->get_tile_type(apart->adev, loc);
+
+	if (ttype == AIE_TILE_TYPE_TILE) {
+		if (module == AIE_CORE_MOD)
+			event_mod = apart->adev->core_events;
+		else
+			event_mod = apart->adev->mem_events;
+	} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+		event_mod = apart->adev->memtile_events;
+	} else {
 		event_mod = apart->adev->pl_events;
+	}
 
 	for (offset = 0; offset < (event_mod->num_events / 32); offset++) {
 		u32 status_off = event_mod->status_regoff + offset * 4U;
@@ -853,6 +860,20 @@ irqreturn_t aie_interrupt(int irq, void *data)
 }
 
 /**
+ * aie_interrupt_callback() - S100/S200 callback.
+ * @payload: payload data.
+ * @data: AI engine aperture structure.
+ *
+ * This function calls aie_interrupt to disables level 2 interrupt controllers
+ * and schedules a task in workqueue to backtrack the source of error interrupt.
+ * Disabled interrupts are re-enabled after successful completion of bottom half.
+ */
+void aie_interrupt_callback(const u32 *payload, void *data)
+{
+	aie_interrupt(0, data);
+}
+
+/**
  * aie_part_has_error() - check if AI engine partition has errors raised
  * @apart: AIE partition pointer
  * @return: true if AI engine partition has errors, false otherwise.
@@ -1016,6 +1037,7 @@ u32 aie_get_error_count(struct aie_partition *apart)
 {
 	const struct aie_error_attr *core_errs = apart->adev->core_errors;
 	const struct aie_error_attr *mem_errs = apart->adev->mem_errors;
+	const struct aie_error_attr *memtile_errs = apart->adev->memtile_errors;
 	const struct aie_error_attr *shim_errs = apart->adev->shim_errors;
 	struct aie_location loc;
 	u32 ttype, num = 0;
@@ -1034,6 +1056,10 @@ u32 aie_get_error_count(struct aie_partition *apart)
 				num += aie_get_module_error_count(apart, loc,
 								  AIE_MEM_MOD,
 								  mem_errs);
+			} else if (ttype == AIE_TILE_TYPE_MEMORY) {
+				num += aie_get_module_error_count(apart, loc,
+								  AIE_MEM_MOD,
+								  memtile_errs);
 			} else {
 				num += aie_get_module_error_count(apart, loc,
 								  AIE_PL_MOD,
