@@ -28,6 +28,18 @@ obj-$(CONFIG_AD7949) += ad7949.o
 obj-$(CONFIG_AD799X) += ad799x.o
 obj-$(CONFIG_AD9467) += ad9467.o
 obj-$(CONFIG_ADI_AXI_ADC) += adi-axi-adc.o
+
+cf_axi_adc-y := cf_axi_adc_core.o
+obj-$(CONFIG_CF_AXI_ADC) += cf_axi_adc.o
+
+ad9361_drv-y := ad9361.o ad9361_conv.o
+ad9361_drv-$(CONFIG_AD9361_EXT_BAND_CONTROL) += ad9361_ext_band_ctrl.o
+obj-$(CONFIG_AD9361) += ad9361_drv.o
+
+obj-$(CONFIG_ADRV9001) += navassa/
+
+obj-$(CONFIG_CF_AXI_TDD) += cf_axi_tdd.o
+
 obj-$(CONFIG_ASPEED_ADC) += aspeed_adc.o
 obj-$(CONFIG_AT91_ADC) += at91_adc.o
 obj-$(CONFIG_AT91_SAMA5D2_ADC) += at91-sama5d2_adc.o

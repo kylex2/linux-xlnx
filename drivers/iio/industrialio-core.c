@@ -87,6 +87,8 @@ static const char * const iio_chan_type_name_spec[] = {
 	[IIO_POSITIONRELATIVE]  = "positionrelative",
 	[IIO_PHASE] = "phase",
 	[IIO_MASSCONCENTRATION] = "massconcentration",
+	[IIO_GENERIC_DATA] = "data",
+	[IIO_FLAGS] = "flags",
 };
 
 static const char * const iio_modifier_names[] = {
@@ -144,6 +146,7 @@ static const char * const iio_chan_info_postfix[] = {
 	[IIO_CHAN_INFO_OFFSET] = "offset",
 	[IIO_CHAN_INFO_CALIBSCALE] = "calibscale",
 	[IIO_CHAN_INFO_CALIBBIAS] = "calibbias",
+	[IIO_CHAN_INFO_CALIBPHASE] = "calibphase",
 	[IIO_CHAN_INFO_PEAK] = "peak_raw",
 	[IIO_CHAN_INFO_PEAK_SCALE] = "peak_scale",
 	[IIO_CHAN_INFO_QUADRATURE_CORRECTION_RAW] = "quadrature_correction_raw",
@@ -702,6 +705,9 @@ static ssize_t __iio_format_value(char *buf, size_t offset, unsigned int type,
 	}
 	case IIO_VAL_CHAR:
 		return sysfs_emit_at(buf, offset, "%c", (char)vals[0]);
+	case IIO_VAL_INT_64:
+		tmp2 = (s64)((((u64)vals[1]) << 32) | (u32)vals[0]);
+		return sysfs_emit_at(buf, offset, "%lld", tmp2);
 	default:
 		return 0;
 	}
@@ -1767,6 +1773,8 @@ static int iio_chrdev_release(struct inode *inode, struct file *filp)
 	struct iio_dev *indio_dev = &iio_dev_opaque->indio_dev;
 	kfree(ib);
 	clear_bit(IIO_BUSY_BIT_POS, &iio_dev_opaque->flags);
+	if (indio_dev->buffer)
+		iio_buffer_free_blocks(indio_dev->buffer);
 	iio_device_put(indio_dev);
 
 	return 0;
@@ -1818,15 +1826,27 @@ out_unlock:
 	return ret;
 }
 
+static bool iio_chan_same_size(const struct iio_chan_spec *a,
+	const struct iio_chan_spec *b)
+{
+	if (a->scan_type.storagebits != b->scan_type.storagebits)
+		return false;
+	if (a->scan_type.repeat != b->scan_type.repeat)
+		return false;
+	return true;
+}
+
 static const struct file_operations iio_buffer_fileops = {
 	.owner = THIS_MODULE,
 	.llseek = noop_llseek,
 	.read = iio_buffer_read_outer_addr,
+	.write = iio_buffer_write_outer_addr,
 	.poll = iio_buffer_poll_addr,
 	.unlocked_ioctl = iio_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.open = iio_chrdev_open,
 	.release = iio_chrdev_release,
+	.mmap = iio_buffer_mmap_addr,
 };
 
 static const struct file_operations iio_event_fileops = {
@@ -1849,13 +1869,16 @@ static int iio_check_unique_scan_index(struct iio_dev *indio_dev)
 	for (i = 0; i < indio_dev->num_channels - 1; i++) {
 		if (channels[i].scan_index < 0)
 			continue;
-		for (j = i + 1; j < indio_dev->num_channels; j++)
-			if (channels[i].scan_index == channels[j].scan_index) {
-				dev_err(&indio_dev->dev,
-					"Duplicate scan index %d\n",
-					channels[i].scan_index);
-				return -EINVAL;
-			}
+		for (j = i + 1; j < indio_dev->num_channels; j++) {
+			if (channels[i].scan_index != channels[j].scan_index)
+				continue;
+			if (iio_chan_same_size(&channels[i], &channels[j]))
+				continue;
+			dev_err(&indio_dev->dev,
+				"Duplicate scan index %d\n",
+				channels[i].scan_index);
+			return -EINVAL;
+		}
 	}
 
 	return 0;

@@ -12,6 +12,7 @@
 struct iio_buffer;
 
 int iio_push_to_buffers(struct iio_dev *indio_dev, const void *data);
+int iio_buffer_remove_sample(struct iio_buffer *buffer, u8 *data);
 
 /**
  * iio_push_to_buffers_with_timestamp() - push data and timestamp to buffers
@@ -37,6 +38,7 @@ static inline int iio_push_to_buffers_with_timestamp(struct iio_dev *indio_dev,
 
 	return iio_push_to_buffers(indio_dev, data);
 }
+
 
 bool iio_validate_scan_mask_onehot(struct iio_dev *indio_dev,
 				   const unsigned long *mask);
